@@ -1,0 +1,59 @@
+# SentimentStream - Orquestación con Docker Compose
+# Servicios: MongoDB, Spark (job de streaming) y API Flask
+
+services:
+
+  mongo:
+    image: mongo:6.0
+    container_name: sentimentstream_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  spark:
+    image: apache/spark:3.5.0
+    container_name: sentimentstream_spark
+    user: root
+    depends_on:
+      - mongo
+    environment:
+      - DATASET_PATH=/app/data/dataset_sentimientos_500.csv
+      - INPUT_STREAM_DIR=/app/data/stream_input
+      - MODEL_PATH=/app/data/model_nb
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=sentimentstream
+      - MONGO_COLLECTION=sentiments
+    volumes:
+      - ../spark:/opt/app
+      - ../data:/app/data
+    working_dir: /opt/app
+    command: >
+      bash -c "pip install pymongo==4.8.0 numpy &&
+               /opt/spark/bin/spark-submit --master local[2] streaming_pipeline.py"
+
+  api:
+    image: python:3.10-slim
+    container_name: sentimentstream_api
+    depends_on:
+      - mongo
+      - spark
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=sentimentstream
+      - MONGO_COLLECTION=sentiments
+      - MODEL_PATH=/app/data/model_nb
+    volumes:
+      - ../api:/opt/api
+      - ../data:/app/data
+    working_dir: /opt/api
+    ports:
+      - "5000:5000"
+    command: >
+      bash -c "apt-get update && apt-get install -y default-jre-headless &&
+               pip install -r requirements.txt &&
+               python app.py"
+
+volumes:
+  mongo_data:

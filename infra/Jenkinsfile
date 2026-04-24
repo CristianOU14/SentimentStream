@@ -1,0 +1,54 @@
+// SentimentStream - Pipeline básico de Jenkins
+// Construye los servicios definidos en docker-compose y los levanta.
+
+pipeline {
+    agent any
+
+    environment {
+        COMPOSE_FILE = 'infra/docker-compose.yml'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Validar estructura') {
+            steps {
+                sh 'ls -la'
+                sh 'test -f data/dataset_sentimientos_500.csv'
+                sh 'test -f spark/streaming_pipeline.py'
+                sh 'test -f api/app.py'
+                sh 'test -f ${COMPOSE_FILE}'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'docker compose -f ${COMPOSE_FILE} build'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh 'docker compose -f ${COMPOSE_FILE} up -d'
+            }
+        }
+
+        stage('Health check API') {
+            steps {
+                sh 'sleep 30'
+                sh 'curl -f http://localhost:5000/stats || exit 1'
+            }
+        }
+    }
+
+    post {
+        failure {
+            sh 'docker compose -f ${COMPOSE_FILE} logs --tail=200 || true'
+        }
+    }
+}
