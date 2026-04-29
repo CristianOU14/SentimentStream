@@ -70,19 +70,14 @@ def listar_sentimientos():
     Devuelve un listado de predicciones almacenadas.
     Filtros opcionales:
         - sentimiento: positivo | negativo | neutro
-        - limit: número máximo de registros (por defecto 50)
     """
     sentimiento = request.args.get("sentimiento")
-    try:
-        limit = int(request.args.get("limit", 50))
-    except ValueError:
-        limit = 50
 
     filtro = {}
     if sentimiento:
         filtro["sentimiento_predicho"] = sentimiento
 
-    cursor = _coleccion.find(filtro).sort("timestamp", -1).limit(limit)
+    cursor = _coleccion.find(filtro).sort("timestamp", -1)
     resultados = [_serializar(d) for d in cursor]
     return jsonify({"total": len(resultados), "resultados": resultados})
 
@@ -128,6 +123,7 @@ def predecir():
         from pyspark.sql import functions as F
         from pyspark.sql.types import StringType
         import re
+        from datetime import datetime
 
         def _limpiar(t):
             if t is None:
@@ -153,6 +149,15 @@ def predecir():
 
         probs = pred["probability"]
         confianza = float(max(probs.toArray() if hasattr(probs, "toArray") else probs))
+
+        # Guardar resultado en MongoDB
+        doc = {
+            "texto_original": texto,
+            "sentimiento_predicho": sentimiento,
+            "confianza": confianza,
+            "timestamp": datetime.utcnow(),
+        }
+        _coleccion.insert_one(doc)
 
         return jsonify({
             "texto": texto,
